@@ -1,3 +1,107 @@
+-- --------------------------- Profiles ------------------------------
+local Profile = {}
+Profile.__index = Profile
+
+function Profile:new(name, paletteGroups)
+    local self = setmetatable({}, Profile)
+    self.name = name
+    self.paletteGroups = paletteGroups
+    return self
+end
+
+local ReadProfilesFile = function(relativeDirectory, filename)
+    local file = io.open(relativeDirectory .. "\\" .. filename, "r")
+    
+    if file == nil then
+        os.execute("mkdir \"" .. relativeDirectory .. "\"")
+        file = io.open(relativeDirectory .. "\\" .. filename, "w")
+        
+        if file ~= nil then
+            file:write("")
+            file:close()
+        end
+
+        return "<Profiles></Profiles>"
+    else
+        local contents = file:read("*a")
+        file:close()
+        return contents
+    end
+end
+
+local ParseColorXML = function (colorXML)
+    local red = string.gmatch(colorXML, "red=\"(.-)\"")()
+    local green = string.gmatch(colorXML, "green=\"(.-)\"")()
+    local blue = string.gmatch(colorXML, "blue=\"(.-)\"")()
+    local alpha = string.gmatch(colorXML, "alpha=\"(.-)\"")()
+
+    return Color {
+        red = tonumber(red),
+        green =tonumber(green),
+        blue = tonumber(blue),
+        alpha = tonumber(alpha)
+    }
+end
+
+local ParseColorsXML = function (colorsXML)
+    local colorMatches = string.gmatch(colorsXML, "<Color (.-)></Color>")
+    local colors = {}
+
+    for match in colorMatches do
+        local color = ParseColorXML(match)
+        table.insert(colors, color)
+    end
+
+    return colors
+end
+
+local ParsePaletteGroupXML = function (groupXml)
+    local groupId = string.gmatch(groupXml, "<Id>(.-)</Id>")()
+    local groupLabel = string.gmatch(groupXml, "<Label>(.-)</Label>")()
+
+    local colorsXML = string.gmatch(groupXml, "<Colors>(.-)</Colors>")()
+    local groupColors = ParseColorsXML(colorsXML)
+
+    return PaletteGroup:new(groupId, groupLabel, groupColors)
+end
+
+local PraseGroupsInProfile = function (profileContents)
+    local groupMatches = string.gmatch(profileContents, "<Group>(.-)</Group>")
+    local collection = PaletteGroupCollection:new()
+
+    for match in groupMatches do
+        local group = ParsePaletteGroupXML(match)
+        collection:Add(group)
+    end
+
+    return collection
+end
+
+local ParseProfiles = function (fileContents)
+    local profileMatches = string.gmatch(fileContents, "<Profile>(.-)</Profile>")
+    local profiles = {}
+
+
+    for match in profileMatches do
+        local profileName = string.gmatch(match, "<Name>(.-)</Name>")()
+        local groups = PraseGroupsInProfile(match)
+
+        local profile = Profile:new(profileName, groups)
+        profiles[#profiles] = profile
+    end
+
+    return profiles
+end
+
+local LoadProfiles = function ()
+    local directory = "data/scripts/Palette Organizer"
+    local filename = "profiles.xml"
+    local fileContents = ReadProfilesFile(directory, filename)
+    local profiles = ParseProfiles(fileContents)
+    return profiles
+end
+-- --------------------------- Profiles ------------------------------
+
 -- --------------------------- Palette Group -------------------------
 PaletteGroup = {}
 PaletteGroup.__index = PaletteGroup
@@ -91,7 +195,7 @@ local CreateMainDialog = function (controller)
         title = "Palette Organizer"
     }
 
-    dialog.bounds = Rectangle(250, dialog.bounds.y + 250, 250, 100)
+    dialog.bounds = Rectangle(300, dialog.bounds.y + 250, 250, 100)
 
     dialog
     :button {
@@ -188,7 +292,7 @@ local AttachPaletteGroupEditControls = function (controller, dialog)
     }
 end
 
-local AttachPaletteGroupControls = function (dialog, paletteGroup)
+local AttachPaletteGroupControls = function (dialog, paletteGroup)    
     dialog
     :label {
         id = paletteGroup.labelId,
@@ -284,14 +388,30 @@ Controller.__index = Controller
 
 function Controller:new()
     local self = setmetatable({}, Controller)
-    self.paletteGroups = PaletteGroupCollection:new()
+
+    local profiles = LoadProfiles()
+
+    if profiles[0] == nil then
+        self.paletteGroups = PaletteGroupCollection:new()
+    else
+        self.paletteGroups = profiles[0].paletteGroups
+    end
+
     return self
 end
 
 function Controller:Start()
-    local MainDialog = CreateMainDialog(self)
-    self.mainDialog = MainDialog
-    MainDialog:show {
+    local mainDialog = CreateMainDialog(self)
+    self.mainDialog = mainDialog
+
+    for i, paletteGroup in ipairs(self.paletteGroups.groups) do
+        AttachPaletteGroupControls(mainDialog, paletteGroup)
+        ExtendDialogHeight(mainDialog, 25)
+    end
+
+    mainDialog.bounds = Rectangle(250, mainDialog.bounds.y, 200, mainDialog.bounds.height)
+
+    mainDialog:show {
         wait=false
     }
 end
@@ -402,3 +522,6 @@ end
 
 local controller = Controller:new()
 controller:Start()
+
+
+
