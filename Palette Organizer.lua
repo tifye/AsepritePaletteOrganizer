@@ -1,14 +1,92 @@
--- --------------------------- Profiles ------------------------------
+-- --------------------------- Profile -------------------------------
 local Profile = {}
 Profile.__index = Profile
 
-function Profile:new(name, paletteGroups)
+function Profile:new(id, name, paletteGroups)
     local self = setmetatable({}, Profile)
+    self.id = id
     self.name = name
     self.paletteGroups = paletteGroups
     return self
 end
+-- --------------------------- Profile -------------------------------
 
+-- --------------------------- ProfileCollection ---------------------
+ProfileCollection = {}
+ProfileCollection.__index = ProfileCollection
+
+function ProfileCollection:new()
+    local self = setmetatable({}, ProfileCollection)
+    self.profiles = {}
+    return self
+end
+
+function ProfileCollection:Add(profile)
+    table.insert(self.profiles, profile)
+end
+
+function ProfileCollection:TryGetByName(name)
+    local profileIndex = self:IndexOf(name)
+    if profileIndex > -1 then
+        return self.profiles[profileIndex]
+    end
+    return nil
+end
+
+function ProfileCollection:TryGet(id)
+    local profileIndex = self:IndexOf(id)
+    if profileIndex > -1 then
+        return self.profiles[profileIndex]
+    end
+    return nil
+end
+
+function ProfileCollection:First()
+    return self.profiles[1]
+end
+
+function ProfileCollection:Remove(name)
+    local profileIndex = self:IndexOf(name)
+    if profileIndex > -1 then
+        table.remove(self.profiles, profileIndex)
+    end
+end
+
+function ProfileCollection:IndexOf(query)
+    for i, profile in ipairs(self.profiles) do
+        if profile.name == query or profile.id == query then
+            return i
+        end
+    end
+    return -1
+end
+
+function ProfileCollection:Replace(index, profile) 
+    self.profiles[index] = profile
+end
+
+function ProfileCollection:At(index)
+    return self.profiles[index]
+end
+
+function ProfileCollection:Count()
+    return #self.profiles
+end
+
+function ProfileCollection:GetNames()
+    local names = {}
+    for i, profile in ipairs(self.profiles) do
+        table.insert(names, profile.name)
+    end
+    return names
+end
+-- --------------------------- ProfileCollection ---------------------
+
+-- --------------------------- Profiles ------------------------------
+-- I know this looks like a mess. If i ever need to change the structure of how
+-- profiles are saved then i will write a generic xml parser. For now this is fine.
+
+-- --------------------------- Load Profiles -------------------------
 local ReadProfilesFile = function(relativeDirectory, filename)
     local file = io.open(relativeDirectory .. "\\" .. filename, "r")
     
@@ -79,15 +157,15 @@ end
 
 local ParseProfiles = function (fileContents)
     local profileMatches = string.gmatch(fileContents, "<Profile>(.-)</Profile>")
-    local profiles = {}
-
+    local profiles = ProfileCollection:new()
 
     for match in profileMatches do
+        local profileId = string.gmatch(match, "<Id>(.-)</Id>")()
         local profileName = string.gmatch(match, "<Name>(.-)</Name>")()
         local groups = PraseGroupsInProfile(match)
 
-        local profile = Profile:new(profileName, groups)
-        profiles[#profiles] = profile
+        local profile = Profile:new(profileId, profileName, groups)
+        profiles:Add(profile)
     end
 
     return profiles
@@ -100,6 +178,78 @@ local LoadProfiles = function ()
     local profiles = ParseProfiles(fileContents)
     return profiles
 end
+-- --------------------------- Load Profiles -------------------------
+-- --------------------------- Save Profiles -------------------------
+local SaveXMLToFile = function (xml, relativeDirectory, filename)
+    local path = relativeDirectory .. "\\" .. filename
+    local file = io.open(path, "w")
+    
+    if file == nil then
+        print("An error occured while saving the file: " .. path)
+        return
+    end
+
+    file:write(xml)
+    file:close()
+end
+
+local SaveProfilesXMLToFile = function (profilesXml)
+    local directory = "data/scripts/Palette Organizer"
+    local filename = "profiles.xml"
+    SaveXMLToFile(profilesXml, directory, filename)
+end
+
+local ColorToXML = function (color)
+    return "<Color red=\"" .. color.red .. "\" green=\"" .. color.green .. "\" blue=\"" .. color.blue .. "\" alpha=\"" .. color.alpha .. "\"></Color>"
+end
+
+local PaletteGroupToXML = function (paletteGroup)
+    local xml = "<Group>"
+    xml = xml .. "<Id>" .. paletteGroup.id .. "</Id>"
+    xml = xml .. "<Label>" .. paletteGroup.label .. "</Label>"
+    xml = xml .. "<Colors>"
+
+    for i, color in ipairs(paletteGroup.colors) do
+        xml = xml .. ColorToXML(color)
+    end
+
+    xml = xml .. "</Colors>"
+    xml = xml .. "</Group>"
+    return xml
+end
+
+local PaletteGroupCollectionToXML = function (paletteGroupCollection)
+    local xml = "<Groups>"
+    for i, group in ipairs(paletteGroupCollection.groups) do
+        xml = xml .. PaletteGroupToXML(group)
+    end
+    xml = xml .. "</Groups>"
+    return xml
+end
+
+local ProfileToXML = function (profile)
+    local xml = "<Profile>"
+    xml = xml .. "<Id>" .. profile.id .. "</Id>"
+    xml = xml .. "<Name>" .. profile.name .. "</Name>"
+    xml = xml .. "<Groups>" .. PaletteGroupCollectionToXML(profile.paletteGroups) .. "</Groups>"
+    xml = xml .. "</Profile>"
+    return xml
+end
+
+local ProfilesCollectionToXML = function (profiles)
+    local xml = "<Profiles>"
+    for i, profile in ipairs(profiles.profiles) do
+        xml = xml .. ProfileToXML(profile)
+    end
+    xml = xml .. "</Profiles>"
+    return xml
+end
+
+local SaveProfiles = function (profiles)
+    local xml = ProfilesCollectionToXML(profiles)
+    SaveProfilesXMLToFile(xml)
+end
+-- --------------------------- Save Profiles -------------------------
 -- --------------------------- Profiles ------------------------------
 
 -- --------------------------- Palette Group -------------------------
@@ -199,19 +349,27 @@ local CreateMainDialog = function (controller)
 
     dialog
     :button {
+        text = "Profiles",
+        focus = false,
+        onclick=function ()
+            controller:ShowProfileManagerDialog()
+        end
+    }
+    :button {
         text="Add Group",
         onclick=function ()
             controller:ShowAddPaletteGroupDialog()
         end
     }
     :button {
-        text="Edit Groups",
+        text="Edit Group",
         onclick=function ()
             controller:ShowEditPaletteGroupDialog()
         end
     }
     :separator {
-        text = "Groups"
+        id = "profileName",
+        text = controller.activeProfile.name
     }
 
     controller.mainDialog = dialog
@@ -382,6 +540,59 @@ local CreateEditPaletteGroupDialog = function (controller)
 end
 -- --------------------------- Edit Palette Group Dialog ------------
 
+-- --------------------------- Profile Manager Dialog ---------------
+local CreateProfilesManagerDialog = function (controller)
+    local dialog = Dialog("Profile Manager")
+
+    local profileNames = controller.profiles:GetNames()
+
+    dialog
+    :button {
+        text = "New Profile",
+        onclick = function ()
+            controller:NewProfile()
+        end
+    }
+    :combobox {
+        id = "targetProfile",
+        option = controller.activeProfile.name,
+        options = profileNames,
+        onchange = function ()
+            dialog:modify { id = "editProfileName", text = dialog.data.targetProfile }
+        end
+    }
+    :label {
+        text = "Edit Profile Name"
+    }
+    :entry {
+        id = "editProfileName",
+        text = dialog.data.targetProfile,
+        onchange = function ()
+        end
+    }
+
+    :separator {}
+    :button {
+        text = "Select Profile",
+        onclick = function ()
+            controller:SelectProfileClicked()
+        end
+    }
+    :button {
+        text = "Apply Edit",
+        onclick = function ()
+            controller:ApplyProfileEditClicked()
+        end
+    }
+    :button {
+        text = "Close"
+    }
+    
+
+    return dialog
+end
+-- --------------------------- Profile Manager Dialog ---------------
+
 -- --------------------------- Controller ---------------------------
 Controller = {}
 Controller.__index = Controller
@@ -390,11 +601,19 @@ function Controller:new()
     local self = setmetatable({}, Controller)
 
     local profiles = LoadProfiles()
+    self.profiles = profiles
 
-    if profiles[0] == nil then
-        self.paletteGroups = PaletteGroupCollection:new()
+    local activeProfile = profiles:First()
+
+    if activeProfile == nil then
+        local paletteGroups = PaletteGroupCollection:new()
+        self.activeProfile = Profile:new(1, "Untitled Profile", paletteGroups)
+        self.paletteGroups = paletteGroups
+
+        profiles:Add(self.activeProfile)
     else
-        self.paletteGroups = profiles[0].paletteGroups
+        self.activeProfile = activeProfile
+        self.paletteGroups = activeProfile.paletteGroups
     end
 
     return self
@@ -426,7 +645,9 @@ function Controller:AddGroupClicked()
 
     local mainDialog = self.mainDialog
     AttachPaletteGroupControls(mainDialog, paletteGroup)
-    ExtendDialogHeight(mainDialog, 25)
+    ExtendDialogHeight(mainDialog, 40)
+
+    self:SaveProfiles(self.profiles)
 end
 
 function Controller:ColorClicked(mouseButton, color, paletteGroupId)
@@ -482,6 +703,8 @@ function Controller:ApplyEditClicked()
     paletteGroup.colors = data.shades
     self.paletteGroups:Replace(paletteGroup.id, paletteGroup)
     self:UpdatePaletteGroupUI(paletteGroup)
+
+    self:SaveProfiles(self.profiles)
 end
 
 function Controller:UpdatePaletteGroupUI(paletteGroup)
@@ -517,9 +740,103 @@ function Controller:ShowEditPaletteGroupDialog()
         wait=false
     }
 end
+
+function Controller:ShowProfileManagerDialog()    
+    self.profileManagerDialog = CreateProfilesManagerDialog(self)
+    self.profileManagerDialog:show {
+        wait=true
+    }
+end
+
+function Controller:ApplyProfileEditClicked()
+    local data = self.profileManagerDialog.data
+
+    local profile = self.profiles:TryGetByName(data.targetProfile)
+    if profile == nil then
+        print("Could not find profile with name: " .. data.targetProfile)
+        return
+    end
+
+    profile.name = data.editProfileName
+
+    self.profileManagerDialog:modify {
+        id = "targetProfile",
+        option = data.editProfileName,
+        options = self.profiles:GetNames()
+    }
+    
+    if self.activeProfile.id == profile.id then
+        self:SetMainDialogProfileName(data.editProfileName)
+    end
+
+    self:SaveProfiles(self.profiles)
+end
+
+function Controller:SetMainDialogProfileName(profileName)
+    self.mainDialog:modify {
+        id = "profileName",
+        text = profileName
+    }
+end
+
+function Controller:SetActiveProfile(profile)
+    self.activeProfile = profile
+    self.paletteGroups = profile.paletteGroups
+    self:SetMainDialogProfileName(profile.name)    
+end
+
+function Controller:SwitchProfile(profile)
+    self:SetActiveProfile(profile)
+    self:Refresh()
+end
+
+function Controller:Refresh()
+    self:CloseDialogs()
+    self:Start()
+end
+
+function Controller:CloseDialogs()
+    self.mainDialog:close()
+
+    if self.editDialog ~= nil then
+        self.editDialog:close()
+    end
+
+    if self.addDialog ~= nil then
+        self.addDialog:close()
+    end
+
+    if self.profileManagerDialog ~= nil then
+        self.profileManagerDialog:close()
+    end
+end
+
+function Controller:SelectProfileClicked()
+    local selectedProfileName = self.profileManagerDialog.data.targetProfile
+    local profile = self.profiles:TryGetByName(selectedProfileName)
+
+    if profile == nil then
+        print("Could not find profile with name: " .. selectedProfileName)
+        return
+    end
+
+    self:SwitchProfile(profile)
+end
+
+function Controller:SaveProfiles(profiles)
+    SaveProfiles(profiles)
+end
+
+function Controller:NewProfile()
+    local profile = Profile:new(self.profiles:Count()+1, "Untitled Profile", PaletteGroupCollection:new())
+    self.profiles:Add(profile)
+    self:SwitchProfile(profile)
+    self:ShowProfileManagerDialog()
+    self:SaveProfiles(self.profiles)
+end
 -- --------------------------- Controller ---------------------------
 
-
+os.execute("mkdir \"" .. "data\\script\\Palette Organizer" .. "\"")
 local controller = Controller:new()
 controller:Start()
 
