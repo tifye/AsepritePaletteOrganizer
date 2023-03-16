@@ -502,8 +502,6 @@ local CreateAddPaletteGroupDialog = function (controller)
         parent = controller.mainDialog
     }
 
-    dialog.bounds = Rectangle(500, dialog.bounds.y + 250, 250, 150)
-
     AttachPaletteGroupEditControls(controller, dialog)
 
     dialog
@@ -524,6 +522,8 @@ local CreateAddPaletteGroupDialog = function (controller)
             dialog:close()
         end
     }
+
+    dialog.bounds = Rectangle(500, dialog.bounds.y + 250, dialog.bounds.width, dialog.bounds.height)
 
     return dialog
 end
@@ -761,6 +761,10 @@ function Controller:ShowAddPaletteGroupDialog()
     self.addDialog:show {
         wait=false
     }
+
+    if self.editDialog ~= nil then
+        self.editDialog:close()
+    end
 end
 
 function Controller:ShowEditPaletteGroupDialog()
@@ -776,6 +780,10 @@ function Controller:ShowEditPaletteGroupDialog()
     self.editDialog:show {
         wait=false
     }
+
+    if self.addDialog ~= nil then
+        self.addDialog:close()
+    end
 end
 
 function Controller:ShowProfileManagerDialog()    
