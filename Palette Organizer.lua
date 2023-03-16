@@ -469,6 +469,30 @@ local AttachPaletteGroupControls = function (dialog, paletteGroup)
         end
     }
 end
+
+local ConfirmDialog = function (title, prompt)
+    local dialog = Dialog { title = title }
+    dialog
+    :label { text = prompt }
+    :button {
+        id="confirm",
+        text="OK",
+        onclick=function ()
+            dialog:close()
+        end
+    }
+    :button {
+        id="cancel",
+        text="Cancel",
+        onclick=function ()
+            dialog:close()
+        end
+    }
+
+    dialog:show { wait = true }
+
+    return dialog
+end
 -- --------------------------- Helper Functions ---------------------
 
 -- --------------------------- Add Palette Group Dialog -------------
@@ -526,6 +550,13 @@ local CreateEditPaletteGroupDialog = function (controller)
 
     dialog
     :separator {}
+    :button {
+        id = "delete",
+        text = "Delete Group",
+        onclick = function ()
+            controller:DeleteGroupClicked()
+        end
+    }
     :button {
         id = "confirm",
         text = "Apply Edit",
@@ -833,6 +864,23 @@ function Controller:NewProfile()
     self:SwitchProfile(profile)
     self:ShowProfileManagerDialog()
     self:SaveProfiles(self.profiles)
+end
+
+function Controller:DeleteGroupClicked()
+    local selectedGroupLabel = self.editDialog.data.targetGroupLabel
+    local paletteGroup = self.paletteGroups:TryGetByLabel(selectedGroupLabel)
+
+    if paletteGroup == nil then
+        print("Could not find palette group with label: " .. selectedGroupLabel)
+        return
+    end
+
+    local confirmDialog = ConfirmDialog("Delete Palette Group", "Are you sure you want to delete palette group: " .. paletteGroup.label .. "?")
+    if confirmDialog.data.confirm then
+        self.paletteGroups:Remove(paletteGroup.id)
+        self:Refresh()
+        self:SaveProfiles(self.profiles)
+    end
 end
 -- --------------------------- Controller ---------------------------
 
