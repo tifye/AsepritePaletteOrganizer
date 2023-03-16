@@ -602,11 +602,17 @@ local CreateProfilesManagerDialog = function (controller)
         end
     }
 
-    :separator {}
     :button {
         text = "Select Profile",
         onclick = function ()
             controller:SelectProfileClicked()
+        end
+    }
+    :separator {}
+    :button {
+        text = "Delete Profile",
+        onclick = function ()
+            controller:DeleteProfileClicked()
         end
     }
     :button {
@@ -852,6 +858,7 @@ function Controller:SelectProfileClicked()
     end
 
     self:SwitchProfile(profile)
+    self:ShowProfileManagerDialog()
 end
 
 function Controller:SaveProfiles(profiles)
@@ -864,6 +871,28 @@ function Controller:NewProfile()
     self:SwitchProfile(profile)
     self:ShowProfileManagerDialog()
     self:SaveProfiles(self.profiles)
+end
+
+function Controller:DeleteProfileClicked()
+    local selectedProfile = self.profileManagerDialog.data.targetProfile
+    local profile = self.profiles:TryGetByName(selectedProfile)
+
+    if profile == nil then 
+        print("Could not find profile with name: " .. selectedProfile)
+        return
+    end
+
+    local confirmDialog = ConfirmDialog("Delete Profile", "Are you sure you want to delete profile: " .. profile.name .. "?")
+    if not confirmDialog.data.confirm then return end
+
+    self.profiles:Remove(profile.id)
+
+    if self.profiles:Count() <= 0 then
+        self:NewProfile()
+    else
+        self:SwitchProfile(self.profiles:First())
+        self:ShowProfileManagerDialog()
+    end
 end
 
 function Controller:DeleteGroupClicked()
