@@ -334,8 +334,16 @@ end
 function PaletteGroupCollection:Replace(id, paletteGroup)
     local groudIndex = self:IndexOf(id)
     if groudIndex > -1 then
-        self.groups[groudIndex] = paletteGroup
+        self:ReplaceAtIndex(groudIndex, paletteGroup)
     end
+end
+
+function PaletteGroupCollection:ReplaceAtIndex(index, paletteGroup)
+    self.groups[index] = paletteGroup
+end
+
+function PaletteGroupCollection:At(index)
+    return self.groups[index]
 end
 -- --------------------------- Palette Group Collection --------------
 
@@ -545,6 +553,18 @@ local CreateEditPaletteGroupDialog = function (controller)
             controller:EditTargetChanged(dialog.data.targetGroupLabel)
         end
     }
+    :button {
+        text = "Move Up",
+        onclick = function ()
+            controller:MoveGroupUpClicked()
+        end
+    }
+    :button {
+        text = "Move Down",
+        onclick = function ()
+            controller:MoveGroupDownClicked()
+        end
+    }
 
     AttachPaletteGroupEditControls(controller, dialog)
 
@@ -716,6 +736,10 @@ function Controller:EditTargetChanged(targetGroupLabel)
     local dialog = self.editDialog
     dialog
     :modify {
+        id ="targetGroupLabel",
+        option = targetGroupLabel
+    }
+    :modify {
         id = "label",
         text = paletteGroup.label
     }
@@ -836,8 +860,10 @@ function Controller:SwitchProfile(profile)
 end
 
 function Controller:Refresh()
+    self.mainDialogLocation = self.mainDialog.bounds
     self:CloseDialogs()
     self:Start()
+    self.mainDialog.bounds = Rectangle(self.mainDialogLocation.x, self.mainDialogLocation.y, self.mainDialog.bounds.width, self.mainDialog.bounds.height)
 end
 
 function Controller:CloseDialogs()
@@ -918,6 +944,52 @@ function Controller:DeleteGroupClicked()
         self:Refresh()
         self:SaveProfiles(self.profiles)
     end
+end
+
+function Controller:MoveGroupUpClicked()
+    local selectedGroupLabel = self.editDialog.data.targetGroupLabel
+    local group = self.paletteGroups:TryGetByLabel(selectedGroupLabel)
+
+    if group == nil then
+        print("Could not find palette group with label: " .. selectedGroupLabel)
+        return
+    end
+
+    local groupIndex = self.paletteGroups:IndexOf(group.id)
+
+    local aboveIndex = groupIndex - 1
+    local aboveGroup = self.paletteGroups:At(aboveIndex)
+    if aboveGroup == nil then return end
+
+    self.paletteGroups:ReplaceAtIndex(groupIndex, aboveGroup)
+    self.paletteGroups:ReplaceAtIndex(aboveIndex, group)
+
+    self:Refresh()
+    self:ShowEditPaletteGroupDialog()
+    self:EditTargetChanged(group.label)
+end
+
+function Controller:MoveGroupDownClicked()
+    local selectedGroupLabel = self.editDialog.data.targetGroupLabel
+    local group = self.paletteGroups:TryGetByLabel(selectedGroupLabel)
+
+    if group == nil then
+        print("Could not find palette group with label: " .. selectedGroupLabel)
+        return
+    end
+
+    local groupIndex = self.paletteGroups:IndexOf(group.id)
+
+    local belowIndex = groupIndex + 1
+    local belowGroup = self.paletteGroups:At(belowIndex)
+    if belowGroup == nil then return end
+
+    self.paletteGroups:ReplaceAtIndex(groupIndex, belowGroup)
+    self.paletteGroups:ReplaceAtIndex(belowIndex, group)
+
+    self:Refresh()
+    self:ShowEditPaletteGroupDialog()
+    self:EditTargetChanged(group.label)
 end
 -- --------------------------- Controller ---------------------------
 
